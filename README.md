@@ -22,7 +22,9 @@ rows = [["state_icon", "machine", "workspace", "$topic"], ["agent"]]
 - The topic is the agent's terminal title with spinner glyphs stripped, cut to
   `MAX_LEN` (28) on a word boundary. A title that only names the agent
   ("Claude Code") or the directory falls back to the agent kind (`claude`).
-- In a tab with several agents, the focused agent names it.
+- In a tab with several agents, the focused agent names it, and the first
+  agent does when focus is in another tab. Each agent still gets its own
+  sidebar topic.
 - Tabs without an agent keep herdr's name. When an agent leaves a tab, the
   glyph goes and the last topic stays.
 - **Hand renames win.** A tab you rename keeps your name; only the glyph in
@@ -33,12 +35,30 @@ rows = [["state_icon", "machine", "workspace", "$topic"], ["agent"]]
 
 ## Install
 
+Needs herdr 0.9 or newer, bash, and jq.
+
 ```sh
-herdr plugin link ~/code/herdr-agent-tabs
+herdr plugin install minerado/herdr-agent-tabs
 ```
 
-Settings: copy `config.example.sh` to `~/.config/herdr-agent-tabs/config.sh`.
-State lives in `~/.local/state/herdr-agent-tabs/`. Needs bash and jq.
+Or, from a clone you want to edit:
+
+```sh
+herdr plugin link /path/to/herdr-agent-tabs
+```
+
+## Settings
+
+All optional. Copy `config.example.sh` to
+`~/.config/herdr-agent-tabs/config.sh` and change what you need:
+
+- `MAX_LEN`: longest topic on a tab (default 28).
+- `GLYPH_WORKING`, `GLYPH_BLOCKED`, `GLYPH_DONE`, `GLYPH_IDLE`: the status
+  glyphs. Pick characters your terminal font has. A glyph the font lacks is
+  drawn from a fallback font and can look smaller than the rest (`◐` does in
+  JetBrains Mono, which is why working is `◔`).
+
+State lives in `~/.local/state/herdr-agent-tabs/`.
 
 ## Test
 

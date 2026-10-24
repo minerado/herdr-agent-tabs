@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs agent-tabs.sh against a fake herdr: it serves $MOCK_SNAP and logs every
-# write to $MOCK_LOG. `make test` or `bash tests/test.sh`.
+# write to $MOCK_LOG. Run with `bash tests/test.sh`.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
@@ -134,6 +134,34 @@ check "spinners stripped" "rename t9 ◔ Refactor auth" "$(log | head -1)"
 snap "[]" "[]"
 run
 check "state pruned" "{}" "$(jq -c .tabs "$AT_STATE_DIR/state.json")"
+
+# --- 15. a restart renumbers tabs: owned and hand-named tabs are found by label
+rm -rf "$AT_STATE_DIR"
+snap "[$(tab t1 1 working),$(tab t2 'mine' working)]" \
+  "[$(agent p1 t1 'Fix login bug' 'Fix login bug'),$(agent p2 t2 'Other' 'Other')]"
+run
+snap "[$(tab tA '◔ Fix login bug' idle),$(tab tB '◔ mine' idle)]" \
+  "[$(agent pA tA 'New topic' 'New topic'),$(agent pB tB 'Other' 'Other')]"
+run
+check "restart keeps ownership" "rename tA ○ New topic
+rename tB ○ mine" "$(log)"
+
+# --- 16. a slash inside a topic is not a path; a path still is
+rm -rf "$AT_STATE_DIR"
+snap "[$(tab t1 1 idle)]" "[$(agent p1 t1 'Fix CI/CD pipeline')]"
+run
+check "slash topic kept" "rename t1 ○ Fix CI/CD pipeline" "$(log | head -1)"
+rm -rf "$AT_STATE_DIR"
+snap "[$(tab t1 1 idle)]" "[$(agent p1 t1 '~/code/api')]"
+run
+check "path refused" "rename t1 ○ claude" "$(log)"
+
+# --- 17. a reply without a tab list changes nothing and keeps the state
+before=$(cat "$AT_STATE_DIR/state.json")
+echo '{"result":{"snapshot":{}}}' >"$MOCK_SNAP"
+run
+check "bad snapshot no writes" "" "$(log)"
+check "bad snapshot keeps state" "$before" "$(cat "$AT_STATE_DIR/state.json")"
 
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

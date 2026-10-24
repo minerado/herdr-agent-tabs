@@ -32,6 +32,11 @@ GLYPH_IDLE="○"
 # label still matches that record. A new tab is ours while it carries herdr's
 # default label, a bare number. Anything else was typed by a person: the tab
 # keeps that name until `reset`, and only the status glyph in front of it moves.
+#
+# herdr saves tab labels across a restart but not tab ids, so a restored tab can
+# come back under an id the state does not know. Its label is exactly the one
+# recorded, though, so a tab whose id record does not match is looked up by label
+# before it is taken for a hand rename.
 # shellcheck disable=SC2016
 AT_JQ='
 def clean: (. // "") | tostring | gsub("[[:cntrl:]]"; " ");
@@ -55,13 +60,15 @@ def fit($n):
 # What an agent pane says it is working on, or "" when its title only names the
 # agent, the directory, or herdr default number.
 def topic:
-  (.terminal_title_stripped // .terminal_title | task) as $t
+  (.terminal_title_stripped // .terminal_title | clean) as $raw
+  | ($raw | task) as $t
   | ($t | ascii_downcase) as $l
   | (.agent | clean | ascii_downcase) as $k
   | ((.foreground_cwd // .cwd) | clean | rtrimstr("/") | split("/") | last // ""
      | ascii_downcase) as $d
   | if $t == "" or ($t | test("^[0-9]+$")) or $l == $k or $l == "\($k) code"
-       or $l == $d or ($t | test("^[^[:space:]]*/[^[:space:]]*$"))
+       or $l == $d
+       or ($raw | sub("^[^[:alnum:]~./]+"; "") | test("^(~|\\.{0,2}/)[^[:space:]]*$"))
     then "" else $t | fit(80) end;
 
 # The configured glyphs plus the defaults, so switching glyph sets never stacks
@@ -72,16 +79,21 @@ def unglyph: . as $l
      // $l);
 
 (.result.snapshot // .result // .) as $s
+# A reply without a tab list is not "no tabs": stop before the state is pruned.
+| if ($s.tabs | type) != "array" then error("snapshot has no tab list") else . end
+| ($state.tabs // {} | to_entries | map({key: .value.label, value: .value.owned})
+   | from_entries) as $by_label
 | [($s.panes // [])[] | select((.agent // "") != "")] as $agents
 | ($s.focused_pane_id // "") as $fp
-| [ ($s.tabs // [])[] | . as $t
+| [ $s.tabs[] | . as $t
     | ($t.label | clean) as $cur
     | ($agents | map(select(.tab_id == $t.tab_id))) as $ap
     | (($ap | map(select(.pane_id == $fp))) + $ap | first) as $p
     | (if ($resets | index($t.tab_id)) then {owned: true, label: $cur}
        else $state.tabs[$t.tab_id] end) as $rec
-    | (if $rec == null then ($cur | test("^[0-9]+$"))
-       else $rec.owned and $rec.label == $cur end) as $owned
+    | (if $rec != null and $rec.label == $cur then $rec.owned
+       elif $by_label | has($cur) then $by_label[$cur]
+       else $cur | test("^[0-9]+$") end) as $owned
     | ($cur | unglyph) as $hand
     | (if $p == null then $hand
        else (if $owned | not then $hand
